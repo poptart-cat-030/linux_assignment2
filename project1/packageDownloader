@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# Script that takes a user-defined list of packages to install and installs them (+ the default ones nathan gave)
+
+# Echo text colour values
+# Reference" https://stackoverflow.com/questions/5947742/how-to-change-the-output-color-of-echo-in-linux
+RED='\033[0;31m'
+GRN='\033[0;32m'
+YLW='\033[0;33m'
+PUR='\033[0;35m'
+# RESET removes the colour
+RESET='\033[0m'
+
+# If user uses option -p, each command line argument (which is a package name) is stored in a list called argPacs 
+declare -a argPacs=()
+# Each package from argPacs that isn't already installed is stored in this list for installation
+declare -a pacList=()
+
+checkIfPackageAlreadyInstalled() {
+    for i in ${argPacs[@]};
+        do
+        # If condition checks if package is already installed
+        # Reference: https://www.tecmint.com/check-package-installed-linux/#:~:text=The%20command%20lists%20installed%20packages,information%20about%20a%20specific%20package.&text=Replace%20with,there%20will%20be%20no%20output.
+        if [[ $(pacman -Q | grep $i) ]]; then
+        # If already installed, tell user
+        echo -e "${PUR}$i is already installed${RESET}"
+
+        elif [[ ! $(pacman -Q | grep $i) ]]; then
+        # if the package hasn't been installed, then add it to pacList
+        # Reference: https://stackoverflow.com/questions/2013396/mutable-list-or-array-structure-in-bash-how-can-i-easily-append-to-it
+        pacList+=($i)
+        # If not already installed, tell user
+        echo -e "${RED}$i is not already installed${RESET}"
+        fi
+    done
+}
+
+downloadPackagesFromList() {
+    for i in ${pacList[@]};
+    do
+        echo -e "Attempting to download package ${YLW}$i${RESET}"
+        # attempt to download a package from pacList
+        # --quiet to show less information if installation is successful
+        # --noconfirm to bypass any and all "are you sure" messages
+        pacman -Syu --quiet --noconfirm $i
+        
+        # if statement will return an exit code
+        # Reference: https://stackoverflow.com/questions/26274415/how-can-i-find-out-whether-a-specific-package-is-already-installed-in-arch-linu
+        # if package is installed: returns  exit code 0
+        if [[ $(pacman -Qi ${i}) ]]; then
+        echo -e "${GRN}$i has been installed successfully${RESET}"
+        # if package isn't installed: returns exit code 1
+        else
+        echo -e "${RED}$i has not been installed. Please double-check the package name${RESET}"
+        fi
+    done
+}
+
+downloadDefaultPackages() {
+    argPacs=("kakoune" "tmux")
+    checkIfPackageAlreadyInstalled
+    downloadPackagesFromList
+}
+
+while getopts ":p:d" opt; do
+    case ${opt} in
+        p)
+        # Need quotation marks around the option arguments for -p
+        argPacs=(${OPTARG})
+        checkIfPackageAlreadyInstalled
+        downloadPackagesFromList
+        ;;
+        d)
+        downloadDefaultPackages
+        ;;
+        *) 
+        echo "Error: Invalid option(s)"
+        exit 1
+        ;;
+    esac
+done

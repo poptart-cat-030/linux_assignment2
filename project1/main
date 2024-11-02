@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Script to call package downloading script and symbolic link creation script
+# options p: and d are the same options used in 
+while getopts ":p:d" opt; do
+    case ${opt} in
+        p) 
+        # Calling package downloader script with the script names provided when calling the main script option -p
+        ./packageDownloader -p "${OPTARG}"
+        ;;
+        d) 
+        ./packageDownloader -d
+        ;;
+        *)
+        echo "Error: Invalid option(s)"
+        exit 1
+        ;;
+    esac
+done
