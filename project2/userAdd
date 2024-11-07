@@ -1,0 +1,407 @@
+#!/bin/bash
+
+# Script to add a user onto the system without using utilities other than passwd and chown
+
+# Anywhere that you see >&2 is for making sure that the variable being echoed is only printed in the terminal and not being returned in the function
+
+# location of file containing users
+passwdFile="/etc/passwd"
+# location of file containing groups
+groupFile="/etc/group"
+# location of file containing shells
+shellFile="/etc/shells"
+# variable to store the name of the user
+user=
+# variable to store the user ID of the user
+userID=
+# variable to store the list of current users
+userList=
+
+# variable to store the list of group(s) to add the user to
+groups=
+# variable to store the group ID of the group that the user will belong to by default upon creation
+groupID=
+# variable to store the list of current groups
+groupsList=
+
+# variable to store the path of the user's home directory
+homedir= 
+# variable to store the shell of the user
+shell=
+
+# variable to stores the list of available shells on a Linux machine
+# grep finds text in the shellFile doesn't contain (using -v) a # at the beginning of the line (indicated by '^#')
+# We are excluding any lines that contain a # at the begininng because those would be comments, not the names of shells
+# Reference: https://www.baeldung.com/linux/find-available-shells
+shellsList=$(grep -v '^#' $shellFile)
+
+isUserRoot() {
+    # Function to check if the script has been run with root user permissions
+    # Ref: https://stackoverflow.com/questions/18215973/how-to-check-if-running-as-root-in-a-bash-script
+    if [[ $EUID != 0 ]]; then
+        echo "Error: Please run the script as the root user or using 'sudo'"
+        # Terminate the program if condition fails
+        exit 1
+    fi
+}
+
+isUserValid() {
+    # Function to check if the username for the user can be used
+    # Checks 2 conditions: 1. username doesn't contain special characters and 2. username is not already in use
+
+    # Username starts off being valid
+    local valid="true"
+
+    # Local variable to store the username that will be passed in during getopts
+    local user=$1
+    # echo $user >&2
+
+    # List of special characters that a username cannot contain
+    specialCharacters=("!" "@" "#" "$" "%" "^" "&" "*" "(" ")" "-" "_" "=" "+" "{" "}" "|" ":" ";" "<" ">" "?" "/")
+    # echo ${specialCharacters[@]} >&2
+    
+    # Check if username contains special characters
+    # Reference: https://stackoverflow.com/questions/6241256/what-is-the-proper-way-to-test-a-bash-functions-return-value
+    for character in ${specialCharacters[@]};
+    do
+        # For loop loops over all the characters in the list of special characters
+        # If condition checks if username contains any special character
+        # Reference: https://linuxize.com/post/how-to-check-if-string-contains-substring-in-bash/
+        if [[ $user == *"$character"* ]]; then
+            # If the username contains special characters, then that username is not valid
+            valid="false"
+            echo "Username cannot contain special characters." >&2
+        fi
+    done
+
+    # userList stores all the usernames found in the passwdFile by using the cut command to extract the username fields
+    # -f1 = field 1 (where the username field is)
+    # -d: = set : as a delimitter
+    # Reference: https://askubuntu.com/questions/645236/command-to-list-all-users-with-their-uid
+    userList=$(cut -d: -f1 $passwdFile)
+    # echo ${userList[@]} >&2
+
+    # Check if username is already in use
+    if [[ $userList =~ "$user" ]]; then
+        # If the username is already in use, then that username is not valid
+        valid="false"
+        echo "Username is already taken. Please choose a different one. " >&2
+    fi
+    
+    # return value of valid (true or false)
+    # If username passes all the conditions, then username is valid (valid = "true")
+    echo $valid
+}
+
+isShellValid() {
+    # Function to check if the shell provided is valid
+
+    # Shell starts off NOT being valid
+    local valid="false"
+
+    # Local variable to store the shell that will be passed in during getopts
+    local shell=$1
+
+    # For loop goes through each shell from the list of shells available
+    for sys_shell in ${shellsList[@]};
+    do
+        # If condition checks if the user-provided shell matches a shell from the list of shells available
+        if [[ $sys_shell == $shell ]]; then
+            # If the shell does, then the shell is valid
+            valid="true"
+            # Get out of the loop
+            break
+        fi
+    done
+
+    # If the user-provided shell didn't match any shell from the list of shells available, then the shell is still invalid
+    # If this is the case, then print out the following statements:
+    if [[ $valid == "false" ]]; then
+        echo "Invalid shell. Please input a shell from the following:" >&2
+        # Print out list of available shells
+        echo ${shellsList[@]} >&2
+    fi
+
+    # return value of valid ("true" or "false")
+    echo $valid
+}
+
+isGroupsValid() {
+    # Function to check if the groups that the user is supposed to be added to exist
+
+    # Groups starts off being valid
+    local valid="true"
+
+    # groupsList stores all the user IDs found in the groupFile by using the cut command to extract the group name fields 
+    # -f1 = field 1 (where the group name field is)
+    groupsList=$(cut -d: -f1 $groupFile)
+
+    # For loop checks each group in the list of groups
+    for group in ${groups[@]};
+    do
+        # If condition checks if the group the user is to be added to is in the list of existing groups
+        if [[ ! $groupsList =~ $group ]]; then
+            # If the group isn't, then the group is invalid
+            valid="false"
+            echo "$group is not a valid group" >&2
+        fi
+    done
+
+    # return value of valid ("true" or "false")
+    echo $valid
+}
+
+# getopts retrieves the options and arguments passed into the command line when calling the script
+# For each option passed in, we perform some action. Some options require arugments 
+# For example: -u is the option used for naming the user, and the colon after u in getopts indicates that -u requires an argument
+while getopts ":u:s:g:" opt; do
+    case ${opt} in
+    # What to do when the user uses -u
+        u)
+        # Username for the user
+        # We send the function isUserValid a paramter, OPTARG, which is the username (argument) passed when the option -u was called
+        # If condition checks if isUserValid returns true (meaning that the username is valid)
+        if [[ $(isUserValid ${OPTARG}) == "true" ]]; then
+            user=${OPTARG}
+            # Print out the username
+            echo "user: ${user}"
+        else
+            # Terminate the program if condition fails
+            exit 1
+        fi
+        ;;
+    # What to do when the user uses -s
+        s)
+        # User-specified shell
+        # We send the function isShellValid a paramter, OPTARG, which is the shell (argument) passed when the option -s was called
+        # If condition checks if isShellValid returns true (meaning that the shell is valid)
+        if [[ $(isShellValid ${OPTARG}) == "true" ]]; then
+            shell=${OPTARG}
+            # Print out shell name
+            echo "shell: ${shell}"
+        else
+            # Terminate the program if condition fails
+            exit 1
+        fi
+        ;;
+        g)
+    # What to do when the user uses -g
+        # Additional groups to add the user to
+        # Add any additional groups specified into the groups list
+        # The variable groups is a list containing all the group names (arguments) passed into the option -g
+        groups+="${OPTARG}"
+        
+        # The first element of groups, groups[0], is a single string containing the names of all groups: "group-1 group-2 group-n"
+        # groups=(${groups[0]}) takes groups[0] and turns it into a list (elements are the group names that were separated by spaces)
+        groups=(${groups[0]})
+
+        # We send the function isGroupsValid a paramter, groups[@], which is a modified list of the group names (arguments) passed when the option -g was called
+        # If condition checks if isGroupValid returns true (meaning that all the groups in the list exist)
+        if [[ $(isGroupsValid ${groups[@]}) == "true" ]]; then
+            # Print out list of groups
+            echo "Additional groups: ${groups[@]}"
+        else
+            # Terminate the program if condition fails
+            exit 1
+        fi
+        ;;
+        *)
+    # What to do when the user doesn't use any of the options above
+        echo "Error: Invalid option(s)"
+        echo "Usage: ./userAdd -u [username] -s [shell] -g ['group1 group2 group3...']"
+        # Terminate the program if condition fails
+        exit 1
+        ;;
+    esac
+done
+
+# If script was run with no arguments (Ex: ./userAdd) then print information on how to use this script
+if [[ $# -lt 1 ]]; then
+    echo "Error: You must provide options and arguments"
+    echo "Usage: ./userAdd -u [username] -s [shell] -g ['group1 group2 group3...']"
+    # Terminate the program
+    exit 1
+fi
+
+createUserID() {
+    # Function for creating the userID of a user
+
+    # userIDList stores all the user IDs found in the passwdFile by using the cut command to extract the user ID fields 
+    # -f3 = field 3 (where the user ID field is)
+    userIDList=$(cut -d: -f3 $passwdFile)
+
+    # Creating user IDs in the range 1000 to 4294967295 (upper limit for user IDs)
+    # Reference: https://www.baeldung.com/linux/user-ids-reserved-values#:~:text=For%20Linux%20kernel%20version%202.4,4%2C294%2C967%2C295%2C%20which%20is%2032%20bits.
+    # start = start of the loop (first userID usable)
+    # Reference (for while loop): https://www.geeksforgeeks.org/bash-scripting-while-loop/
+    startingUserID=1000
+    while [ $startingUserID -le 4294967295 ];
+    do
+        # Checking if a userID is already in use / is found in the userIDList
+        # Reference: https://www.baeldung.com/linux/check-bash-array-contains-value
+        if [[ ! ${userIDList[@]} =~ $startingUserID ]]; then
+            userID=$startingUserID
+            # echo $userID
+            break
+        fi
+        # Increment start variable by 1
+        ((startingUserID++))
+    done
+}
+
+createGroupID() {
+    # Function for creating a groupID for the user's default group
+
+    # Same logic and references as the createUserID function so references are omitted here
+    # groupIDList stores all the group IDs found in the groupFile by using the cut command to extract the group ID fields 
+    # -f3 = field 3 (where the group ID field is)
+    groupIDList=$(cut -d: -f3 $groupFile)
+
+    # Creating group IDs in the range 1000 to 4294967295
+    # start = start of the loop (first groupID usable)
+    startingGroupID=1000
+    while [ $startingGroupID -le 4294967295 ];
+    do
+        # Checking if a groupID is already in use / is found in the groupIDList
+        if [[ ! ${groupIDList[@]} =~ $startingGroupID ]]; then
+            groupID=$startingGroupID
+            # echo $groupID
+            break
+        fi
+        # Increment start variable by 1
+        ((startingGroupID++))
+    done
+}
+
+createGroup() {
+    # Function for creating the user's default group
+    groupInfo="$user:x:$groupID:"
+    # echo $groupInfo
+    echo $groupInfo >> $groupFile
+}
+
+createHomeDir() {
+    # Function for creating the user's home directory and adding content to it
+
+    # Creating path to home directory
+    homedir="/home/$user"
+
+    # In the if condition, run the mkdir command to create the home directory and see if it returns an error
+    # if it didn't then the home directory has been created successfully
+    if ! mkdir $homedir; then
+        # If an error was returned when running mkdir, then terminate the program. mkdir will return an error message itself
+        exit 1
+    fi
+
+    # Copying the contents of /etc/skel directory into the user's home directory
+    # cp -r is for dowloading any directories or files within the /etc/skel directory
+    cp -r /etc/skel $homedir
+}
+
+createPassword() {
+    # Function for creating the user's password correctly
+
+    # using passwd utility for changing the password of a user
+    # Reference: https://www.cyberciti.biz/faq/linux-set-change-password-how-to/
+
+    # Variable to check that the password for the user has been set
+    local passwordIsSet=false
+
+    # While password has not been set, run the command passwd to attempt to create a password for the user
+    while [[ $passwordIsSet == false ]];
+    do
+        # if the password is created successfully, set the passwordIsSet variable to true and break out of loop
+        if passwd ${user}; then
+            passwordIsSet=true
+        fi
+    done
+}
+
+createUser() {
+    # Function for creating the user and its default group
+    createUserID
+    createGroupID
+    createGroup
+    createHomeDir
+    # User information is to be written like so to match the format of the users in the passwdFile
+    userInfo="$user:x:$userID:$groupID::$homedir:$shell"
+    # echo $userInfo >&2
+    # Appending the userInfo text to the end of the passwdFile where user information is stored
+    echo $userInfo >> $passwdFile
+    createPassword
+    echo "User created successfully" >&2
+}
+
+changeHomeDirOwner() {
+    # Function to change the owners of the user's home directory since it'll be owned by user root and group root by default
+    # This was due to us running the script using sudo, which made us the root user during the creation of the user's home directory
+
+    # Owners of the file should go from root:root to user:group
+    # Since the name of the user and the group is the same, we can just reuse the user variable
+    # Ref: https://www.geeksforgeeks.org/chown-command-in-linux-with-examples/
+    chown $user:$user $homedir
+}
+
+addUserToGroups() {
+    # Function for adding the user to existing groups
+    # echo groups: ${groups[@]} >&2
+
+    # Loop through each group from the list of groups provided from the command line
+    for group in ${groups[@]};
+    do
+        # grep finds text in the group file that, at the beginning of the line, matches the group name in which there's a colon after it
+        # Looking for this colon after the group name to avoid grabbing text containing a group for which a user with the same name as our group is a member of
+        # ^ in grep "^${group}:*" indicates the beginning of the line
+        # Ref: https://askubuntu.com/questions/639157/grep-beginning-of-line
+        # * in grep "^${group}:*" indicates that anything can be after the colon after the group name 
+        # Using grep -n to retrieve the line number that the pattern is on
+        # Using grep -w to only retrieve text that follows the pattern
+        # Then, pipe the result into a cut command that will retrieve only the line number field
+        lineNumber=$(grep -nw "^${group}:*" $groupFile | cut -d: -f1)
+        # echo $lineNumber >&2
+
+        # If condition checks that line number is not null
+        # Ref: https://itsfoss.com/bash-check-variable-empty/#:~:text=Bash%20has%20a%20few%20conditional,the%20variable%20is%20not%20empty.
+        if [[ ! -z $lineNumber ]]; then
+            # Same grep logic from above
+            # Variable cut_result stores the result of the following cut command, which will retrieve whatever is after the last colon in linenumber:group:x:groupid:
+            cut_result=$(grep -nw "^${group}:*" $groupFile | cut -d: -f5)
+            # echo ${cut_result} >&2
+
+            # If condition checks if cut_result is not null
+            if [[ ! -z $cut_result ]]; then
+            # If cut_result is not null, then that means there's at least one user belonging to the group (aside from the default user)
+            # Thus, the next user should follow the first user after a comma in the format: groupname:x:groupid:user1,user2
+            
+            # Using the line number of the group found earlier, the sed command goes to that line and adds the user (and a comma before the user) at the end of that line
+            # sed -i is for modifying the file in place
+            # Ref: https://www.tutorialspoint.com/insert-a-line-at-specific-line-number#:~:text=To%20insert%20a%20line%20at%20a%20specific%20line%20number%20using,before%20the%20line%20number%20specified.
+            # The s that comes after ${lineNumber} is do indicate that sed is doing substitution (replacing text)
+            # Ref: https://unix.stackexchange.com/questions/449438/what-does-sed-s-0-9-g-command-mean-in-unix
+            # The $ in sed after ${lineNumber} is to indicate the end of the line.
+            # Ref: https://askubuntu.com/questions/1446406/end-of-line-in-sed-command#:~:text=The%20easiest%20in%20this%20case,character%2C%20meaning%20end%20of%20line.
+                sed -i "${lineNumber}s/$/,$user/" $groupFile
+            else
+            # If cut_result is null, then that means there's no users belonging to the group (aside from the default user)
+            # Thus, the user can just be added to the group in the format groupname:x:groupid:user1
+
+            # Same logic for sed as above, except there's no comma added before the user
+                sed -i "${lineNumber}s/$/$user/" $groupFile
+            fi
+        else
+            echo "Line number cannot be null" >&2
+        fi
+    done
+
+    echo "User added to groups successfully" >&2
+}
+
+main() {
+    # function to call all other functions
+    isUserRoot
+    createUser
+    changeHomeDirOwner
+    addUserToGroups
+}
+
+main
