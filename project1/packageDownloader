@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Script that takes a user-defined list of packages to install and installs them (+ the default ones nathan gave)
+# Script that reads a user-given list of packages to install and installs them (+ a couple of default ones)
 
-# Echo text colour values
-# Reference" https://stackoverflow.com/questions/5947742/how-to-change-the-output-color-of-echo-in-linux
+# Echo text colour values used where the echo command is called with the option -e
+# Ref: https://stackoverflow.com/questions/5947742/how-to-change-the-output-color-of-echo-in-linux
 RED='\033[0;31m'
 GRN='\033[0;32m'
 YLW='\033[0;33m'
@@ -11,32 +11,66 @@ PUR='\033[0;35m'
 # RESET removes the colour
 RESET='\033[0m'
 
-# If user uses option -p, each command line argument (which is a package name) is stored in a list called argPacs 
-declare -a argPacs=()
-# Each package from argPacs that isn't already installed is stored in this list for installation
-declare -a pacList=()
+# Variable to store the name of the file to install packages from that may have been provided as a positional argument when this script was called in the main script
+# If no positional argument was provided, this variable will be null
+packagesFile=$1
+# Variable (list) to store each package name from the packagesFile
+packagesFromFile=
+# Variable (list) of each package to install (packages that the user wants and doesn't already have)
+packagesToInstall=
+
+checkIfFileExists() {
+    # Function to check if the file passed in the main script actually exists
+
+    # If condition checks if it DOESN'T exist
+    if [[ ! -e $packagesFile ]]; then
+        # If it doesn't, print out an error message and terminate the program
+        echo -e "${RED}Could not find $packagesFile. Please double-check that the filename is correct and that the file is in the correct folder.${RESET}"
+        exit 1
+    fi
+
+    # Indicate that function has completed successfully
+    return 0
+}
+
+getPackagesFromFile() {
+    # Function to retrieve each package listed in the packagesFile and store it in the packagesFromFile list
+
+    # If condition runs the function checkIfFileExists to see if the file exists before attempting to read through it
+    if checkIfFileExists; then
+    # If the file exists, then read through it using the while loop
+    # read command reads a line from a file and stores the content in the variable LINE
+    # Ref: https://kodekloud.com/blog/read-file-in-bash/#how-to-create-a-sample-file
+        while read LINE
+        do
+            # Add content of each line to the packagesFromFile list
+            packagesFromFile+=($LINE)
+            # < $packagesFile tells the while loop to use the file stored in packagesFile for reading
+        done < $packagesFile
+    fi
+}
 
 checkIfPackageAlreadyInstalled() {
-    for i in ${argPacs[@]};
-        do
+    for package in ${packagesFromFile[@]};
+    do
         # If condition checks if package is already installed
         # Reference: https://www.tecmint.com/check-package-installed-linux/#:~:text=The%20command%20lists%20installed%20packages,information%20about%20a%20specific%20package.&text=Replace%20with,there%20will%20be%20no%20output.
-        if [[ $(pacman -Q | grep $i) ]]; then
+        if [[ $(pacman -Q | grep $package) ]]; then
         # If already installed, tell user
-        echo -e "${PUR}$i is already installed${RESET}"
+        echo -e "${PUR}$package is already installed${RESET}"
 
-        elif [[ ! $(pacman -Q | grep $i) ]]; then
+        elif [[ ! $(pacman -Q | grep $package) ]]; then
         # if the package hasn't been installed, then add it to pacList
         # Reference: https://stackoverflow.com/questions/2013396/mutable-list-or-array-structure-in-bash-how-can-i-easily-append-to-it
-        pacList+=($i)
+        packagesToInstall+=($package)
         # If not already installed, tell user
-        echo -e "${RED}$i is not already installed${RESET}"
+        echo -e "${RED}$package is not already installed${RESET}"
         fi
     done
 }
 
 downloadPackagesFromList() {
-    for i in ${pacList[@]};
+    for package in ${packagesToInstall[@]};
     do
         echo -e "Attempting to download package ${YLW}$i${RESET}"
         # attempt to download a package from pacList
@@ -48,34 +82,39 @@ downloadPackagesFromList() {
         # Reference: https://stackoverflow.com/questions/26274415/how-can-i-find-out-whether-a-specific-package-is-already-installed-in-arch-linu
         # if package is installed: returns  exit code 0
         if [[ $(pacman -Qi ${i}) ]]; then
-        echo -e "${GRN}$i has been installed successfully${RESET}"
+        echo -e "${GRN}$package has been installed successfully${RESET}"
         # if package isn't installed: returns exit code 1
         else
-        echo -e "${RED}$i has not been installed. Please double-check the package name${RESET}"
+        echo -e "${RED}$package has not been installed. Please double-check the package name${RESET}"
         fi
     done
 }
 
 downloadDefaultPackages() {
-    argPacs=("kakoune" "tmux")
+    # If this script was run without giving a package list file, then add these packages to the variable that would have stored those packages
+    packagesFromFile+=("kakoune" "tmux")
     checkIfPackageAlreadyInstalled
+    # Download the packages from the packages list that would only contain the two packages given above
     downloadPackagesFromList
 }
 
-while getopts ":p:d" opt; do
-    case ${opt} in
-        p)
-        # Need quotation marks around the option arguments for -p
-        argPacs=(${OPTARG})
+main() {
+    # If script was ran in the main script with no arguments (Ex: ./packageDownloader) then packagesFile will have a value of null
+    # If condition checks if packagesFile is null, if so, then download default packages
+    if [[ -z $1 ]]; then
+        downloadDefaultPackages
+    # If script was ran with an argument in the main script (Ex: ./packageDownloader packagesList) then packagesFile will contain the name of that file
+    # Download packages using the file in packagesFile
+    else
+        checkIfFileExists
+        getPackagesFromFile
         checkIfPackageAlreadyInstalled
         downloadPackagesFromList
-        ;;
-        d)
-        downloadDefaultPackages
-        ;;
-        *) 
-        echo "Error: Invalid option(s)"
-        exit 1
-        ;;
-    esac
-done
+    fi
+}
+
+# echo ${packagesFromFile[@]}
+
+# The packagesFile variable is sent as the first positional argument to the main function
+main $packagesFile
+

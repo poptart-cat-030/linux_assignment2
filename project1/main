@@ -1,18 +1,49 @@
 #!/bin/bash
 
-# Script to call package downloading script and symbolic link creation script
-# options p: and d are the same options used in 
-while getopts ":p:d" opt; do
+# Script to call the package downloading and symbolic link creation scripts
+
+# Echo text colour values used where the echo command is called with the option -e
+# Ref: https://stackoverflow.com/questions/5947742/how-to-change-the-output-color-of-echo-in-linux
+RED='\033[0;31m'
+# RESET removes the colour
+RESET='\033[0m'
+
+isUserRoot() {
+    # Function to check if the script has been run with root user permissions
+    # Ref: https://stackoverflow.com/questions/18215973/how-to-check-if-running-as-root-in-a-bash-script
+    if [[ $EUID != 0 ]]; then
+        echo -e "${RED}Error: Please run the script as the root user or using 'sudo'${RESET}"
+        # Terminate the program if condition fails
+        exit 1
+    fi
+}
+
+# Run function isUserRoot to terminate the program if user is not root
+isUserRoot
+
+while getopts ":p:dc:" opt; 
+do
     case ${opt} in
         p) 
-        # Calling package downloader script with the script names provided when calling the main script option -p
-        ./packageDownloader -p "${OPTARG}"
+        # Download a custom list of packages using the packageDownloader script
+        # Provide a file name for the option argument to download packages from that file
+        ./packageDownloader "${OPTARG}"
         ;;
-        d) 
-        ./packageDownloader -d
+        d)
+        # Download default packages using the packageDownloader script
+        ./packageDownloader
+        ;;
+        c)
+        # Create symbolic links to configuration files using the symbolicLinkCreator script
+        # Provide a user for the option argument to create the links for that user
+        ./symbolicLinkCreator "${OPTARG}"
         ;;
         *)
-        echo "Error: Invalid option(s)"
+        echo -e "${RED}Error: Invalid option(s) or no argument was provided for options -p or -c${RESET}"
+        echo "Usage: ./main -p [filename] to install packages from [filename]"
+        echo "Usage: ./main -d to install default packages"
+        echo "Usage: ./main -c [username] to create symbolic links for [username]"
+        # Terminate the program
         exit 1
         ;;
     esac
