@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# Script to create symbolic links to configuration files in the 2420-as2-starting-files cloned repository
+
+# Echo text colour values used where the echo command is called with the option -e
+# Ref: https://stackoverflow.com/questions/5947742/how-to-change-the-output-color-of-echo-in-linux
+RED='\033[0;31m'
+GRN='\033[0;32m'
+# RESET removes the colour
+RESET='\033[0m'
+
+# Variable to store the name of the user that was provided as a positional argument when this script was called in the main script
+user=$1
+# Variable to store the path to the home directory of the user
+homeDir="/home/$user"
+
+createSymbolicLinks() {
+    # Function to create symbolic links to bin, .config, and .bashrc
+
+    # ln is the command used to create a link
+    # ln -s specifies that we want to create a symbolic link
+    # ln -f to overwrite any symbolic links we have created previously with the same name
+    # Ref: https://www.freecodecamp.org/news/linux-ln-how-to-create-a-symbolic-link-in-linux-example-bash-command/
+
+    # Create symbolic link (shortcut) to the bin folder of the cloned repository from the path of the user's bin folder
+    ln -sf $homeDir/2420-as2-starting-files/bin $homeDir/bin
+
+    # Create symbolic link (shorcut) to the config folder of the cloned repository from the path of the user's .config folder
+    ln -sf $homeDir/2420-as2-starting-files/config $homeDir/.config
+
+    # Create symbolic link (shortcut) to the bashrc file of the cloned repository from the path of the user's .bashrc file
+    ln -sf $homeDir/2420-as2-starting-files/home/bashrc $homeDir/.bashrc
+
+    echo -e "${GRN}Created symbolic links${RESET}" >&2
+}
+
+main() {
+    # Function to run all other functions
+    createSymbolicLinks
+}
+
+main
