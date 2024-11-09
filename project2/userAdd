@@ -47,7 +47,6 @@ isUserRoot() {
 
 isUserValid() {
     # Function to check if the username for the user can be used
-    # Checks 2 conditions: 1. username doesn't contain special characters and 2. username is not already in use
 
     # Username starts off being valid
     local valid="true"
@@ -55,24 +54,6 @@ isUserValid() {
     # Local variable to store the username that will be passed in during getopts
     local user=$1
     # echo $user >&2
-
-    # List of special characters that a username cannot contain
-    specialCharacters=("!" "@" "#" "$" "%" "^" "&" "*" "(" ")" "-" "_" "=" "+" "{" "}" "|" ":" ";" "<" ">" "?" "/")
-    # echo ${specialCharacters[@]} >&2
-    
-    # Check if username contains special characters
-    # Reference: https://stackoverflow.com/questions/6241256/what-is-the-proper-way-to-test-a-bash-functions-return-value
-    for character in ${specialCharacters[@]};
-    do
-        # For loop loops over all the characters in the list of special characters
-        # If condition checks if username contains any special character
-        # Reference: https://linuxize.com/post/how-to-check-if-string-contains-substring-in-bash/
-        if [[ $user == *"$character"* ]]; then
-            # If the username contains special characters, then that username is not valid
-            valid="false"
-            echo "Username cannot contain special characters." >&2
-        fi
-    done
 
     # userList stores all the usernames found in the passwdFile by using the cut command to extract the username fields
     # -f1 = field 1 (where the username field is)
