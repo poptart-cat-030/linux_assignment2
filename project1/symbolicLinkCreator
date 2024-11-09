@@ -11,32 +11,75 @@ RESET='\033[0m'
 
 # Variable to store the name of the user that was provided as a positional argument when this script was called in the main script
 user=$1
+# Variable to store the list of current users
+userList=
 # Variable to store the path to the home directory of the user
 homeDir="/home/$user"
+# location of file containing users
+passwdFile="/etc/passwd"
+
+doesUserExist() {
+    # Function to check if the provided user exists
+
+    # user is assumed to NOT exist first
+    local valid="false"
+
+    # userList stores all the usernames found in the passwdFile by using the cut command to extract the username fields
+    # -f1 = field 1 (where the username field is)
+    # -d: = set : as a delimitter
+    # Reference: https://askubuntu.com/questions/645236/command-to-list-all-users-with-their-uid
+    userList=$(cut -d: -f1 $passwdFile)
+
+    # The first element of userList, userList[0], is a single string containing the names of all users: "user-1 user-2 user-n"
+    # user=(${user[0]}) takes user[0] and turns it into a list (elements are the usernames that were separated by spaces)
+    userList=${userList[0]}
+    # echo ${userList[@]} >&2
+
+    # For loop goes through each username from the list of existing users
+    for username in ${userList[@]};
+    do
+        # If condition checks if the username provided matches a user from the list of users
+        if [[ $username == $user ]]; then
+            # If the user does, then the user is valid
+            valid="true"
+            # Break out of the loop
+            break
+        fi
+    done
+
+    # If the username provided didn't match any username from the list of users, then the username is still invalid
+    # If this is the case, then print out the following statements:
+    if [[ $valid == "false" ]]; then
+        echo -e "${RED}$user does not exist. Please enter the name of an existing user${RESET}" >&2
+    fi
+
+    # return value of valid ("true" or "false")
+    echo $valid
+}
 
 createSymbolicLinks() {
     # Function to create symbolic links to bin, .config, and .bashrc
 
-    # ln is the command used to create a link
-    # ln -s specifies that we want to create a symbolic link
-    # ln -f to overwrite any symbolic links we have created previously with the same name
-    # Ref: https://www.freecodecamp.org/news/linux-ln-how-to-create-a-symbolic-link-in-linux-example-bash-command/
+    # If condition checks if function doesUserExist returns true (meaning that a valid username was provided)
+    if [[ $(doesUserExist) == "true" ]]; then
+        # If true, then perform the logic for creating links
 
-    # Create symbolic link (shortcut) to the bin folder of the cloned repository from the path of the user's bin folder
-    ln -sf $homeDir/2420-as2-starting-files/bin $homeDir/bin
+        # ln is the command used to create a link
+        # ln -s specifies that we want to create a symbolic link
+        # ln -f to overwrite any symbolic links we have created previously with the same name
+        # Ref: https://www.freecodecamp.org/news/linux-ln-how-to-create-a-symbolic-link-in-linux-example-bash-command/
 
-    # Create symbolic link (shorcut) to the config folder of the cloned repository from the path of the user's .config folder
-    ln -sf $homeDir/2420-as2-starting-files/config $homeDir/.config
+        # Create symbolic link (shortcut) to the bin folder of the cloned repository from the path of the user's bin folder
+        ln -sf $homeDir/2420-as2-starting-files/bin $homeDir/bin
 
-    # Create symbolic link (shortcut) to the bashrc file of the cloned repository from the path of the user's .bashrc file
-    ln -sf $homeDir/2420-as2-starting-files/home/bashrc $homeDir/.bashrc
+        # Create symbolic link (shorcut) to the config folder of the cloned repository from the path of the user's .config folder
+        ln -sf $homeDir/2420-as2-starting-files/config $homeDir/.config
 
-    echo -e "${GRN}Created symbolic links${RESET}" >&2
+        # Create symbolic link (shortcut) to the bashrc file of the cloned repository from the path of the user's .bashrc file
+        ln -sf $homeDir/2420-as2-starting-files/home/bashrc $homeDir/.bashrc
+
+        echo -e "${GRN}Created symbolic links${RESET}" >&2
+    fi
 }
 
-main() {
-    # Function to run all other functions
-    createSymbolicLinks
-}
-
-main
+createSymbolicLinks
